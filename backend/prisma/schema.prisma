@@ -1,0 +1,851 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ============ AUTHENTICATION & USER MANAGEMENT ============
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String
+  name              String
+  phone             String?
+  avatar            String?
+  role              Role      @default(EMPLOYEE)
+  department        String?
+  position          String?
+  status            UserStatus @default(ACTIVE)
+  lastLogin         DateTime?
+  
+  // Relations
+  employee          Employee?
+  profileSettings   ProfileSettings?
+  auditLogs         AuditLog[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  HR_MANAGER
+  RECRUITER
+  MANAGER
+  EMPLOYEE
+  CONTRACTOR
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  DELETED
+}
+
+model ProfileSettings {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme             String    @default("light")
+  language          String    @default("en")
+  timezone          String    @default("UTC")
+  notificationsEmail Boolean  @default(true)
+  notificationsPush  Boolean  @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// ============ EMPLOYEE MANAGEMENT ============
+
+model Employee {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Personal Info
+  firstName         String
+  lastName          String
+  email             String    @unique
+  phone             String?
+  dateOfBirth       DateTime?
+  gender            String?
+  nationality       String?
+  address           String?
+  city              String?
+  state             String?
+  zipCode           String?
+  
+  // Employment Info
+  employeeId        String    @unique
+  department        String
+  designation       String
+  reportingManager  String?
+  employmentType    EmploymentType @default(FULL_TIME)
+  joinDate          DateTime
+  endDate           DateTime?
+  status            EmployeeStatus @default(ACTIVE)
+  
+  // Compensation
+  salary            Float?
+  salaryFrequency   SalaryFrequency @default(MONTHLY)
+  currency          String    @default("USD")
+  bankAccount       String?
+  
+  // Skills & Experience
+  skills            String?   // JSON array
+  experience        Int?      // Years
+  qualifications    String?   // JSON array
+  resume            String?   // File path/URL
+  
+  // Relations
+  attendanceRecords Attendance[]
+  leaveRequests     LeaveRequest[]
+  payrollRecords    PayrollRecord[]
+  performanceReviews PerformanceReview[]
+  projects          ProjectMember[]
+  documents         EmployeeDocument[]
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([department])
+  @@index([status])
+  @@index([joinDate])
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  TEMPORARY
+  INTERN
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+  SUSPENDED
+  RETIRED
+  TERMINATED
+}
+
+enum SalaryFrequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+// ============ ATTENDANCE & TIME TRACKING ============
+
+model Attendance {
+  id                String    @id @default(uuid())
+  employeeId        String
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  date              DateTime
+  checkInTime       DateTime?
+  checkOutTime      DateTime?
+  workHours         Float?    // Calculated
+  status            AttendanceStatus @default(ABSENT)
+  notes             String?
+  verifiedBy        String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@unique([employeeId, date])
+  @@index([employeeId])
+  @@index([date])
+  @@index([status])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EARLY_LEAVE
+  HALF_DAY
+  WFH
+  HOLIDAY
+  WEEKEND
+}
+
+// ============ LEAVE MANAGEMENT ============
+
+model LeaveRequest {
+  id                String    @id @default(uuid())
+  employeeId        String
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  leaveType         LeaveType
+  startDate         DateTime
+  endDate           DateTime
+  duration          Int       // Days
+  reason            String?
+  attachments       String?   // JSON array of file paths
+  status            RequestStatus @default(PENDING)
+  approvedBy        String?
+  approvedAt        DateTime?
+  rejectionReason   String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([employeeId])
+  @@index([status])
+  @@index([startDate])
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  PERSONAL
+  MATERNITY
+  PATERNITY
+  BEREAVEMENT
+  UNPAID
+  SABBATICAL
+}
+
+// ============ PAYROLL ============
+
+model PayrollRecord {
+  id                String    @id @default(uuid())
+  employeeId        String
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  month             String    // YYYY-MM
+  year              Int
+  
+  // Earnings
+  basicSalary       Float
+  hra               Float?
+  dearness          Float?
+  conveyance        Float?
+  otherAllowances   String?   // JSON
+  totalEarnings     Float
+  
+  // Deductions
+  incomeTax         Float?
+  employeeESI       Float?
+  employeePF        Float?
+  otherDeductions   String?   // JSON
+  totalDeductions   Float
+  
+  // Totals
+  netSalary         Float
+  
+  status            PayrollStatus @default(PENDING)
+  processedDate     DateTime?
+  paidDate          DateTime?
+  bankReferenceId   String?
+  notes             String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@unique([employeeId, month, year])
+  @@index([employeeId])
+  @@index([status])
+}
+
+enum PayrollStatus {
+  DRAFT
+  PENDING
+  PROCESSING
+  PAID
+  CANCELLED
+  FAILED
+}
+
+// ============ RECRUITMENT ============
+
+model JobPosting {
+  id                String    @id @default(uuid())
+  title             String
+  description       String
+  department        String
+  location          String?
+  jobType           JobType
+  experienceLevel   String
+  salary            Float?
+  salaryMax         Float?
+  currency          String    @default("USD")
+  
+  requiredSkills    String?   // JSON array
+  responsibilities  String?   // JSON array
+  qualifications    String?   // JSON array
+  
+  status            JobPostingStatus @default(DRAFT)
+  postedDate        DateTime?
+  closedDate        DateTime?
+  createdBy         String?
+  
+  candidates        Candidate[]
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([status])
+  @@index([department])
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  TEMPORARY
+  INTERNSHIP
+}
+
+enum JobPostingStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  FILLED
+  CANCELLED
+}
+
+model Candidate {
+  id                String    @id @default(uuid())
+  jobId             String
+  job               JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  
+  firstName         String
+  lastName          String
+  email             String
+  phone             String
+  location          String?
+  
+  resume            String?   // File path
+  portfolio         String?
+  linkedIn          String?
+  
+  experience        Int?      // Years
+  skills            String?   // JSON array
+  qualifications    String?   // JSON array
+  
+  stage             RecruitmentStage @default(APPLIED)
+  matchScore        Int?      // 0-100 AI-generated
+  aiAnalysis        String?   // JSON - AI insights
+  
+  appliedDate       DateTime  @default(now())
+  applicationData   String?   // JSON - custom fields
+  
+  interviewScheduled InterviewSchedule?
+  offers            JobOffer[]
+  
+  status            CandidateStatus @default(ACTIVE)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@unique([jobId, email])
+  @@index([jobId])
+  @@index([stage])
+  @@index([matchScore])
+}
+
+enum RecruitmentStage {
+  APPLIED
+  SCREENING
+  TECHNICAL_ASSESSMENT
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+}
+
+enum CandidateStatus {
+  ACTIVE
+  INACTIVE
+  HIRED
+  REJECTED
+}
+
+model InterviewSchedule {
+  id                String    @id @default(uuid())
+  candidateId       String    @unique
+  candidate         Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  
+  interviewDate     DateTime
+  interviewType     InterviewType
+  interviewer       String?
+  interviewerEmail  String?
+  location          String?
+  meetingLink       String?
+  
+  duration          Int?      // Minutes
+  notes             String?
+  feedback          String?
+  rating            Int?      // 1-5
+  
+  videoRecording    String?   // URL
+  transcription     String?   // AI-generated
+  aiAnalysis        String?   // JSON - tone, confidence, etc
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+enum InterviewType {
+  PHONE_SCREENING
+  TECHNICAL
+  MANAGERIAL
+  HR_ROUND
+  FINAL
+  GROUP
+}
+
+model JobOffer {
+  id                String    @id @default(uuid())
+  candidateId       String
+  candidate         Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  
+  position          String
+  department        String
+  salary            Float
+  currency          String    @default("USD")
+  startDate         DateTime
+  employmentType    EmploymentType
+  
+  benefits          String?   // JSON
+  offerLetter       String?   // File path
+  
+  status            OfferStatus @default(PENDING)
+  issuedDate        DateTime
+  expiryDate        DateTime?
+  acceptedDate      DateTime?
+  rejectedDate      DateTime?
+  rejectionReason   String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([candidateId])
+  @@index([status])
+}
+
+enum OfferStatus {
+  DRAFT
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  WITHDRAWN
+}
+
+// ============ PROJECTS & TASKS ============
+
+model Project {
+  id                String    @id @default(uuid())
+  name              String
+  description       String?
+  department        String?
+  
+  startDate         DateTime
+  endDate           DateTime?
+  status            ProjectStatus @default(PLANNING)
+  priority          Priority
+  
+  manager           String?
+  budget            Float?
+  progress          Int?      // 0-100
+  
+  members           ProjectMember[]
+  tasks             Task[]
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([status])
+  @@index([manager])
+}
+
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model ProjectMember {
+  id                String    @id @default(uuid())
+  projectId         String
+  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employeeId        String
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  role              String?
+  joinDate          DateTime
+  
+  @@unique([projectId, employeeId])
+  @@index([projectId])
+}
+
+model Task {
+  id                String    @id @default(uuid())
+  projectId         String
+  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  title             String
+  description       String?
+  assignedTo        String?   // Employee ID
+  
+  status            TaskStatus @default(TODO)
+  priority          Priority
+  
+  startDate         DateTime?
+  dueDate           DateTime
+  completedDate     DateTime?
+  
+  progress          Int?      // 0-100
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([projectId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+// ============ PERFORMANCE ============
+
+model PerformanceReview {
+  id                String    @id @default(uuid())
+  employeeId        String
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  reviewCycle       String    // Q1 2024, etc
+  reviewer          String    // Manager name
+  
+  rating            Int?      // 1-5
+  feedback          String?
+  strengths         String?   // JSON
+  areasForImprovement String? // JSON
+  goals             String?   // JSON
+  
+  status            ReviewStatus @default(DRAFT)
+  submittedDate     DateTime?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@unique([employeeId, reviewCycle])
+  @@index([employeeId])
+  @@index([reviewCycle])
+}
+
+enum ReviewStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+// ============ FINANCE & EXPENSES ============
+
+model Expense {
+  id                String    @id @default(uuid())
+  employeeId        String
+  
+  category          ExpenseCategory
+  description       String
+  amount            Float
+  currency          String    @default("USD")
+  date              DateTime
+  
+  attachments       String?   // JSON array
+  notes             String?
+  
+  status            ExpenseStatus @default(PENDING)
+  approvedBy        String?
+  approvedDate      DateTime?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([employeeId])
+  @@index([status])
+}
+
+enum ExpenseCategory {
+  TRAVEL
+  MEALS
+  ACCOMMODATION
+  OFFICE_SUPPLIES
+  SOFTWARE
+  CONFERENCE
+  CLIENT_ENTERTAINMENT
+  OTHER
+}
+
+enum ExpenseStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+// ============ ASSETS ============
+
+model Asset {
+  id                String    @id @default(uuid())
+  name              String
+  assetType         AssetType
+  serialNumber      String    @unique
+  
+  purchaseDate      DateTime
+  purchasePrice     Float
+  currency          String    @default("USD")
+  
+  assignedTo        String?   // Employee ID
+  assignmentDate    DateTime?
+  
+  status            AssetStatus @default(AVAILABLE)
+  condition         String?
+  location          String?
+  notes             String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([status])
+  @@index([assetType])
+}
+
+enum AssetType {
+  LAPTOP
+  DESKTOP
+  MONITOR
+  PHONE
+  TABLET
+  FURNITURE
+  EQUIPMENT
+  OTHER
+}
+
+enum AssetStatus {
+  AVAILABLE
+  ASSIGNED
+  MAINTENANCE
+  RETIRED
+  LOST
+}
+
+// ============ DOCUMENTS ============
+
+model EmployeeDocument {
+  id                String    @id @default(uuid())
+  employeeId        String
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  documentType      DocumentType
+  fileName          String
+  fileUrl           String
+  fileSize          Int?
+  
+  uploadedDate      DateTime  @default(now())
+  expiryDate        DateTime?
+  
+  verified          Boolean   @default(false)
+  verifiedBy        String?
+  verificationDate  DateTime?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([employeeId])
+  @@index([documentType])
+}
+
+enum DocumentType {
+  RESUME
+  AADHAR
+  PAN
+  PASSPORT
+  DRIVER_LICENSE
+  OFFER_LETTER
+  JOINING_LETTER
+  INSURANCE
+  TAX_DOCUMENT
+  OTHER
+}
+
+// ============ CRM - LEADS & DEALS ============
+
+model Lead {
+  id                String    @id @default(uuid())
+  companyName       String
+  contactName       String
+  email             String
+  phone             String?
+  
+  industry          String?
+  companySize       String?
+  website           String?
+  
+  stage             LeadStage @default(NEW)
+  source            LeadSource
+  value             Float?
+  currency          String    @default("USD")
+  
+  assignedTo        String?   // Sales Manager
+  notes             String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([stage])
+  @@index([source])
+}
+
+enum LeadStage {
+  NEW
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum LeadSource {
+  WEBSITE
+  LINKEDIN
+  REFERRAL
+  COLD_OUTREACH
+  CONFERENCE
+  PARTNERSHIP
+  INBOUND
+  OTHER
+}
+
+// ============ AUDIT & LOGGING ============
+
+model AuditLog {
+  id                String    @id @default(uuid())
+  userId            String?
+  user              User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  entity            String    // Employee, Payroll, etc
+  entityId          String
+  action            AuditAction
+  
+  oldValues         String?   // JSON
+  newValues         String?   // JSON
+  
+  ipAddress         String?
+  userAgent         String?
+  
+  createdAt         DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+enum AuditAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  SUBMIT
+  EXPORT
+  LOGIN
+  LOGOUT
+}
+
+// ============ NOTIFICATIONS ============
+
+model Notification {
+  id                String    @id @default(uuid())
+  userId            String
+  
+  title             String
+  message           String
+  type              NotificationType
+  reference         String?   // ID of related entity
+  
+  read              Boolean   @default(false)
+  readAt            DateTime?
+  
+  createdAt         DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([read])
+}
+
+enum NotificationType {
+  LEAVE_REQUEST
+  PAYROLL
+  RECRUITMENT
+  PERFORMANCE
+  EXPENSE
+  TASK
+  PROJECT
+  SYSTEM
+}
+
+// ============ JOBS QUEUE (for async tasks) ============
+
+model QueuedJob {
+  id                String    @id @default(uuid())
+  jobType           String
+  status            JobStatus @default(PENDING)
+  
+  data              String    // JSON payload
+  result            String?   // JSON result
+  
+  attempts          Int       @default(0)
+  maxAttempts       Int       @default(3)
+  nextAttemptAt     DateTime?
+  
+  error             String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  completedAt       DateTime?
+  
+  @@index([status])
+  @@index([jobType])
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
