@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react';
 import { PageSkeleton } from '@/components/ui/Skeleton';
 import {
-  RiLayoutGrid,
-  RiListCheck,
+  RiLayoutGridLine,
+  RiCheckboxMultipleLine,
   RiDownloadLine,
   RiAddLine,
   RiArrowDownSLine,
@@ -123,10 +123,10 @@ export default function ProjectsPage() {
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 999, overflow: 'hidden' }}>
             <button onClick={() => setView('grid')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', border: 'none', background: view === 'grid' ? '#fff7ed' : '#ffffff', color: view === 'grid' ? '#ea580c' : '#475569', cursor: 'pointer' }}>
-              <RiLayoutGrid size={16} /> Grid
+              <RiLayoutGridLine size={16} /> Grid
             </button>
             <button onClick={() => setView('list')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', border: 'none', background: view === 'list' ? '#fff7ed' : '#ffffff', color: view === 'list' ? '#ea580c' : '#475569', cursor: 'pointer' }}>
-              <RiListCheck size={16} /> List
+              <RiCheckboxMultipleLine size={16} /> List
             </button>
           </div>
           <button style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#ffffff', color: '#0f172a', cursor: 'pointer' }}>
